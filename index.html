@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Check-in Emosional Harian</title>
+    <title>Check-in Emosional Harian (Lokal)</title>
     <!-- Memuat Tailwind CSS CDN dan Font Inter -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -20,9 +20,6 @@
         .emotion-btn.selected {
             @apply ring-6 ring-offset-2 shadow-2xl transform scale-105; 
         }
-
-        /* Kami akan menggunakan JavaScript untuk menambahkan kelas ring-warna spesifik (misalnya ring-green-600) saat terpilih */
-        /* Hapus kelas .bg-*-selected agar background tetap cerah (misalnya bg-green-400) */
 
         /* Custom styles for radio buttons to look like a scale */
         input[type="radio"] {
@@ -85,7 +82,8 @@
                 <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition duration-300 shadow-md">
                     Masuk dan Mulai Check-in
                 </button>
-                <p class="text-xs text-gray-500 text-center mt-4">ID Autentikasi: <span id="authIdDisplay" class="font-mono text-indigo-500">Memuat...</span></p>
+                <p class="text-xs text-gray-500 text-center mt-4">ID Sesi: <span id="authIdDisplay" class="font-mono text-indigo-500">Lokal Browser</span></p>
+                <p class="text-xs text-red-500 text-center mt-2">⚠️ Data hanya tersimpan di browser ini.</p>
             </form>
         </div>
 
@@ -182,36 +180,30 @@
                     <p id="historyLoading" class="text-gray-500">Memuat riwayat...</p>
                     <!-- Riwayat akan di-inject di sini -->
                 </div>
+                <p class="text-xs text-gray-500 text-center mt-4">Riwayat ini hanya tersimpan di perangkat Anda.</p>
             </section>
             
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot, setDoc, doc, getDoc, setLogLevel, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // --- Variabel Global Canvas ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+    <script>
         // --- State Aplikasi ---
-        let app, db, auth, userId = null;
         let studentData = { name: null, nis: null };
         let selectedEmotion = null;
+
+        // --- Konstanta Local Storage ---
+        const PROFILE_KEY = 'studentProfile';
+        const HISTORY_KEY = 'checkInHistory';
 
         // --- Elemen UI ---
         const loginPage = document.getElementById('loginPage');
         const mainApp = document.getElementById('mainApp');
         const loadingOverlay = document.getElementById('loadingOverlay');
         const appContainer = document.getElementById('appContainer');
-        const displayName = document.getElementById('displayName'); // Digunakan untuk sapaan
-        const emotionDisplayFeedback = document.getElementById('emotionDisplayFeedback'); // Elemen umpan balik emosi
-        const energyDisplayFeedback = document.getElementById('energyDisplayFeedback'); // Elemen umpan balik energi
+        const displayName = document.getElementById('displayName');
+        const emotionDisplayFeedback = document.getElementById('emotionDisplayFeedback');
+        const energyDisplayFeedback = document.getElementById('energyDisplayFeedback');
         const historyContainer = document.getElementById('historyContainer');
-        const authIdDisplay = document.getElementById('authIdDisplay');
         const messageContainer = document.getElementById('messageContainer');
         const submitBtn = document.getElementById('submitBtn');
         const submitText = document.getElementById('submitText');
@@ -231,92 +223,59 @@
             setTimeout(() => { messageContainer.innerHTML = ''; }, 5000);
         }
 
-        // --- Inisialisasi Firebase & Otentikasi ---
+        // --- Logika Local Storage (Menggantikan Firebase) ---
 
-        async function initFirebase() {
+        // Memuat data siswa (NIS & Nama) dari Local Storage
+        function loadStudentProfile() {
             try {
-                if (Object.keys(firebaseConfig).length === 0) {
-                    console.error("Firebase config tidak tersedia.");
-                    loadingOverlay.classList.add('hidden');
-                    appContainer.classList.remove('hidden');
-                    loginPage.classList.remove('hidden');
-                    showMessage('error', 'Konfigurasi Firebase hilang. Fitur riwayat tidak akan berfungsi.');
-                    return;
+                const profileJson = localStorage.getItem(PROFILE_KEY);
+                if (profileJson) {
+                    studentData = JSON.parse(profileJson);
+                    console.log("Profil Siswa dimuat (dari Local Storage):", studentData);
                 }
-
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                setLogLevel('Debug'); // Untuk debugging
-
-                await new Promise((resolve) => {
-                    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-                        if (user) {
-                            userId = user.uid;
-                            authIdDisplay.textContent = userId;
-                            console.log("Authenticated User ID:", userId);
-                            // Cek apakah data siswa sudah tersimpan
-                            await loadStudentProfile();
-                            resolve();
-                        } else {
-                            // Coba sign in dengan token kustom atau anonim
-                            try {
-                                if (initialAuthToken) {
-                                    await signInWithCustomToken(auth, initialAuthToken);
-                                } else {
-                                    await signInAnonymously(auth);
-                                }
-                            } catch (error) {
-                                console.error("Otentikasi Gagal:", error);
-                                await signInAnonymously(auth);
-                            }
-                        }
-                        unsubscribe();
-                    });
-                });
-
-            } catch (error) {
-                console.error("Kesalahan saat inisialisasi Firebase:", error);
-            } finally {
-                loadingOverlay.classList.add('hidden');
-                appContainer.classList.remove('hidden');
-                // Tampilkan main app hanya jika profil sudah ada
-                if (studentData.nis && studentData.name) {
-                    showMainApp();
-                } else {
-                    loginPage.classList.remove('hidden');
-                }
+            } catch (e) {
+                console.error("Gagal memuat profil siswa dari Local Storage:", e);
+                localStorage.removeItem(PROFILE_KEY); // Hapus jika data korup
             }
         }
 
-        // Memuat data siswa (NIS & Nama) yang tersimpan
-        async function loadStudentProfile() {
-            if (!userId) return;
+        // Menyimpan data siswa ke Local Storage
+        function saveStudentProfile(data) {
             try {
-                const docRef = doc(db, "artifacts", appId, "users", userId, "profile", "data");
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    studentData = docSnap.data();
-                    console.log("Profil Siswa dimuat (dari Firestore):", studentData);
-                } else {
-                    // Jika data belum ada, pastikan state lokal bersih
-                    studentData = { name: null, nis: null };
-                }
+                localStorage.setItem(PROFILE_KEY, JSON.stringify(data));
+                console.log("Profil Siswa berhasil disimpan ke Local Storage.");
             } catch (e) {
-                console.error("Gagal memuat profil siswa:", e);
+                console.error("Gagal menyimpan profil siswa ke Local Storage:", e);
+            }
+        }
+        
+        // Memuat riwayat check-in dari Local Storage
+        function loadCheckInHistory() {
+             try {
+                const historyJson = localStorage.getItem(HISTORY_KEY);
+                return historyJson ? JSON.parse(historyJson) : [];
+            } catch (e) {
+                console.error("Gagal memuat riwayat dari Local Storage:", e);
+                return [];
             }
         }
 
-        // Menyimpan data siswa ke Firestore SAJA (local state dihandle di loginForm)
-        async function saveStudentProfile(data) {
-            if (!userId) return;
+        // Menyimpan riwayat check-in yang diperbarui ke Local Storage
+        function saveCheckInHistory(newEntry) {
+            const history = loadCheckInHistory();
+            
+            // Tambahkan entri baru
+            history.push(newEntry);
+
+            // Batasi riwayat menjadi 100 entri terakhir (opsional)
+            // const limitedHistory = history.slice(-100); 
+
             try {
-                const docRef = doc(db, "artifacts", appId, "users", userId, "profile", "data");
-                await setDoc(docRef, data);
-                console.log("Profil Siswa berhasil disimpan ke Firestore.");
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+                return true;
             } catch (e) {
-                console.error("Gagal menyimpan profil siswa ke Firestore:", e);
+                console.error("Gagal menyimpan riwayat ke Local Storage:", e);
+                return false;
             }
         }
 
@@ -325,13 +284,10 @@
             loginPage.classList.add('hidden');
             mainApp.classList.remove('hidden');
             
-            // VERIFIKASI: Log data sebelum ditampilkan (untuk debugging 'null')
-            console.log("Menampilkan Aplikasi Utama. studentData:", studentData);
-
             // Sapaan lengkap: Nama dan NIS
             displayName.textContent = `${studentData.name} (NIS: ${studentData.nis})`;
-            loadHistory(); 
-            setupEnergyListener(); // Memasang listener untuk umpan balik energi
+            renderHistory(); 
+            setupEnergyListener(); 
         }
 
         // --- Logika Logout ---
@@ -362,22 +318,18 @@
             logoutBtn.addEventListener('click', logoutUser);
         }
 
-        // --- Logika Check-in Emosional ---
+        // --- Logika Check-in Emosional UI ---
 
-        // Daftar kelas ring yang mungkin
         const ringClasses = ['ring-green-600', 'ring-yellow-600', 'ring-orange-600', 'ring-red-600'];
 
         window.selectEmotion = function(button) {
-            // 1. Hapus status 'selected' dan ring dari semua tombol
             document.querySelectorAll('.emotion-btn').forEach(btn => {
                 btn.classList.remove('selected', ...ringClasses);
             });
 
-            // 2. Tambahkan status 'selected' dan ring yang sesuai
             const color = button.getAttribute('data-color');
             let ringClass;
             
-            // Menentukan kelas ring yang sesuai dengan warna tombol yang sudah cerah
             if (color === 'green') ringClass = 'ring-green-600';
             else if (color === 'yellow') ringClass = 'ring-yellow-600';
             else if (color === 'orange') ringClass = 'ring-orange-600';
@@ -390,12 +342,10 @@
                 color: color
             };
 
-            // --- Update Umpan Balik Emosi ---
             emotionDisplayFeedback.classList.remove('hidden');
             emotionDisplayFeedback.innerHTML = `Anda memilih perasaan: **${selectedEmotion.emotion}**.`;
         }
         
-        // --- Listener untuk Tingkat Energi (Baru) ---
         function setupEnergyListener() {
             const radioButtons = document.querySelectorAll('input[name="energyLevel"]');
             radioButtons.forEach(radio => {
@@ -407,7 +357,7 @@
             });
         }
 
-        document.getElementById('checkInForm').addEventListener('submit', async function(e) {
+        document.getElementById('checkInForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
             submitBtn.disabled = true;
@@ -417,7 +367,7 @@
             const energyLevel = document.querySelector('input[name="energyLevel"]:checked');
             const otherNeed = document.getElementById('otherNeed').value.trim();
             
-            if (!selectedEmotion || !energyLevel || !userId) {
+            if (!selectedEmotion || !energyLevel) {
                 showMessage('error', 'Anda harus memilih kondisi emosi dan tingkat energi.');
                 submitBtn.disabled = false;
                 submitText.classList.remove('hidden');
@@ -438,14 +388,14 @@
                 emosi: selectedEmotion.emotion,
                 tingkatEnergi: energyLevel.value,
                 kebutuhan: selectedNeeds.length > 0 ? selectedNeeds.join('; ') : 'Tidak ada kebutuhan spesifik',
-                timestamp: serverTimestamp()
+                timestamp: Date.now() // Menggunakan timestamp lokal
             };
 
-            try {
-                const checkinsColRef = collection(db, "artifacts", appId, "users", userId, "checkins");
-                await addDoc(checkinsColRef, checkinData);
-                
-                showMessage('success', `Check-in berhasil disimpan! Emosi: ${checkinData.emosi}, Energi: ${checkinData.tingkatEnergi}/5.`);
+            // Simpan data ke Local Storage
+            const success = saveCheckInHistory(checkinData);
+
+            if (success) {
+                showMessage('success', `Check-in berhasil disimpan secara lokal! Emosi: ${checkinData.emosi}, Energi: ${checkinData.tingkatEnergi}/5.`);
                 
                 // Bersihkan formulir dan status pilihan
                 e.target.reset();
@@ -458,48 +408,35 @@
                 emotionDisplayFeedback.classList.add('hidden');
                 energyDisplayFeedback.classList.add('hidden');
 
-            } catch (e) {
-                console.error("Gagal menyimpan check-in:", e);
-                showMessage('error', 'Gagal menyimpan data ke database. Coba lagi.');
-            } finally {
-                submitBtn.disabled = false;
-                submitText.classList.remove('hidden');
-                submitSpinner.classList.add('hidden');
+                // Muat ulang riwayat setelah penyimpanan
+                renderHistory();
+            } else {
+                 showMessage('error', 'Gagal menyimpan data ke memori lokal. Coba lagi.');
             }
+
+            submitBtn.disabled = false;
+            submitText.classList.remove('hidden');
+            submitSpinner.classList.add('hidden');
         });
 
-        // --- Logika Riwayat Emosional (onSnapshot) ---
+        // --- Logika Render Riwayat ---
 
-        function loadHistory() {
-            if (!userId) {
-                historyContainer.innerHTML = '<p class="text-gray-500 italic">Autentikasi belum siap atau terjadi kesalahan.</p>';
+        function renderHistory() {
+            const history = loadCheckInHistory();
+            
+            // Urutkan riwayat dari terbaru (timestamp tertinggi)
+            history.sort((a, b) => b.timestamp - a.timestamp);
+
+            // Ambil hanya 5 entri terakhir
+            const latestHistory = history.slice(0, 5);
+            
+            if (latestHistory.length === 0) {
+                historyContainer.innerHTML = '<p class="text-gray-500 italic">Belum ada riwayat check-in yang tercatat di browser ini.</p>';
                 return;
             }
 
-            const checkinsColRef = collection(db, "artifacts", appId, "users", userId, "checkins");
-            const q = query(checkinsColRef, orderBy("timestamp", "desc"), limit(5));
-
-            onSnapshot(q, (snapshot) => {
-                const historyList = [];
-                snapshot.forEach(doc => {
-                    historyList.push(doc.data());
-                });
-
-                renderHistory(historyList);
-            }, (error) => {
-                console.error("Gagal memuat riwayat:", error);
-                historyContainer.innerHTML = '<p class="text-red-500">Gagal memuat riwayat emosional.</p>';
-            });
-        }
-
-        function renderHistory(history) {
-            if (history.length === 0) {
-                historyContainer.innerHTML = '<p class="text-gray-500 italic">Belum ada riwayat check-in yang tercatat.</p>';
-                return;
-            }
-
-            historyContainer.innerHTML = history.map(item => {
-                const time = item.timestamp ? new Date(item.timestamp.seconds * 1000).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'Baru Saja';
+            historyContainer.innerHTML = latestHistory.map(item => {
+                const time = new Date(item.timestamp).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
                 const colorMap = {
                     '🟢': 'border-green-400 bg-green-50',
                     '🟡': 'border-yellow-400 bg-yellow-50',
@@ -519,22 +456,21 @@
             }).join('');
         }
 
-        // --- Logika Login (Perbaikan Utama di sini) ---
+        // --- Logika Login ---
 
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const name = document.getElementById('studentName').value.trim();
             const nis = document.getElementById('studentNis').value.trim();
 
             if (name && nis) {
-                // LANGKAH PERBAIKAN: SET STATE LOKAL SEBELUM DISPLAY
                 studentData.name = name;
                 studentData.nis = nis;
                 
-                // Lakukan penyimpanan ke Firestore secara asynchronous
-                await saveStudentProfile(studentData); 
+                // Simpan profil ke Local Storage
+                saveStudentProfile(studentData); 
 
-                // Tampilkan aplikasi dengan data yang BARU saja disimpan ke state lokal
+                // Tampilkan aplikasi
                 showMainApp();
             } else {
                 showMessage('error', 'Nama dan NIS harus diisi.');
@@ -542,8 +478,24 @@
         });
 
 
-        // --- Startup ---
-        window.onload = initFirebase;
+        // --- Startup Aplikasi ---
+        function initApp() {
+             // 1. Muat profil siswa dari Local Storage
+            loadStudentProfile();
+            
+            // 2. Sembunyikan loading overlay
+            loadingOverlay.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+
+            // 3. Tentukan halaman mana yang akan ditampilkan
+            if (studentData.nis && studentData.name) {
+                showMainApp();
+            } else {
+                loginPage.classList.remove('hidden');
+            }
+        }
+        
+        window.onload = initApp;
     </script>
 </body>
 </html>
