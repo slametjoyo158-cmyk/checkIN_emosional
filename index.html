@@ -208,8 +208,8 @@
         const loadingOverlay = document.getElementById('loadingOverlay');
         const appContainer = document.getElementById('appContainer');
         const displayName = document.getElementById('displayName'); // Digunakan untuk sapaan
-        const emotionDisplayFeedback = document.getElementById('emotionDisplayFeedback'); // Elemen baru
-        const energyDisplayFeedback = document.getElementById('energyDisplayFeedback'); // Elemen baru
+        const emotionDisplayFeedback = document.getElementById('emotionDisplayFeedback'); // Elemen umpan balik emosi
+        const energyDisplayFeedback = document.getElementById('energyDisplayFeedback'); // Elemen umpan balik energi
         const historyContainer = document.getElementById('historyContainer');
         const authIdDisplay = document.getElementById('authIdDisplay');
         const messageContainer = document.getElementById('messageContainer');
@@ -280,6 +280,7 @@
             } finally {
                 loadingOverlay.classList.add('hidden');
                 appContainer.classList.remove('hidden');
+                // Tampilkan main app hanya jika profil sudah ada
                 if (studentData.nis && studentData.name) {
                     showMainApp();
                 } else {
@@ -297,22 +298,25 @@
 
                 if (docSnap.exists()) {
                     studentData = docSnap.data();
-                    console.log("Profil Siswa dimuat:", studentData);
+                    console.log("Profil Siswa dimuat (dari Firestore):", studentData);
+                } else {
+                    // Jika data belum ada, pastikan state lokal bersih
+                    studentData = { name: null, nis: null };
                 }
             } catch (e) {
                 console.error("Gagal memuat profil siswa:", e);
             }
         }
 
-        // Menyimpan data siswa setelah login
-        async function saveStudentProfile(name, nis) {
+        // Menyimpan data siswa ke Firestore SAJA (local state dihandle di loginForm)
+        async function saveStudentProfile(data) {
             if (!userId) return;
-            studentData = { name: name, nis: nis };
             try {
                 const docRef = doc(db, "artifacts", appId, "users", userId, "profile", "data");
-                await setDoc(docRef, studentData);
+                await setDoc(docRef, data);
+                console.log("Profil Siswa berhasil disimpan ke Firestore.");
             } catch (e) {
-                console.error("Gagal menyimpan profil siswa:", e);
+                console.error("Gagal menyimpan profil siswa ke Firestore:", e);
             }
         }
 
@@ -320,9 +324,13 @@
         function showMainApp() {
             loginPage.classList.add('hidden');
             mainApp.classList.remove('hidden');
+            
+            // VERIFIKASI: Log data sebelum ditampilkan (untuk debugging 'null')
+            console.log("Menampilkan Aplikasi Utama. studentData:", studentData);
+
             // Sapaan lengkap: Nama dan NIS
             displayName.textContent = `${studentData.name} (NIS: ${studentData.nis})`;
-            loadHistory();
+            loadHistory(); 
             setupEnergyListener(); // Memasang listener untuk umpan balik energi
         }
 
@@ -511,7 +519,7 @@
             }).join('');
         }
 
-        // --- Logika Login ---
+        // --- Logika Login (Perbaikan Utama di sini) ---
 
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -519,7 +527,14 @@
             const nis = document.getElementById('studentNis').value.trim();
 
             if (name && nis) {
-                await saveStudentProfile(name, nis);
+                // LANGKAH PERBAIKAN: SET STATE LOKAL SEBELUM DISPLAY
+                studentData.name = name;
+                studentData.nis = nis;
+                
+                // Lakukan penyimpanan ke Firestore secara asynchronous
+                await saveStudentProfile(studentData); 
+
+                // Tampilkan aplikasi dengan data yang BARU saja disimpan ke state lokal
                 showMainApp();
             } else {
                 showMessage('error', 'Nama dan NIS harus diisi.');
