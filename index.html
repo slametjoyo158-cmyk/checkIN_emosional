@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-in Emosional Harian</title>
+    <!-- Memuat Tailwind CSS CDN dan Font Inter -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Custom styles for the interactive emotion buttons */
+        .emotion-btn {
+            /* Menambahkan bayangan untuk efek 3D */
+            @apply p-4 rounded-xl shadow-lg transition duration-300 ease-in-out transform hover:scale-105 border-4 border-transparent;
+        }
+        
+        /* Gaya dasar untuk tombol yang dipilih: ring tebal, bayangan, dan sedikit skala */
+        .emotion-btn.selected {
+            @apply ring-6 ring-offset-2 shadow-2xl transform scale-105; 
+        }
+
+        /* Kami akan menggunakan JavaScript untuk menambahkan kelas ring-warna spesifik (misalnya ring-green-600) saat terpilih */
+        /* Hapus kelas .bg-*-selected agar background tetap cerah (misalnya bg-green-400) */
+
+        /* Custom styles for radio buttons to look like a scale */
+        input[type="radio"] {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            @apply w-8 h-8 md:w-10 md:h-10 border-2 border-gray-300 rounded-full cursor-pointer transition duration-200 flex items-center justify-center text-xs font-semibold;
+        }
+        
+        /* Efek HOVER untuk tingkat energi (sebelum diklik) */
+        input[type="radio"]:hover {
+            @apply border-indigo-500 bg-indigo-100 transition duration-150;
+        }
+
+        /* Efek CHECKED untuk tingkat energi (setelah diklik) */
+        input[type="radio"]:checked {
+            @apply bg-indigo-600 border-indigo-600 text-white shadow-lg;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+
+    <!-- Loading Indicator -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center p-6 bg-white rounded-lg shadow-xl">
+             <div class="spinner !border-t-indigo-600 !w-8 !h-8 !border-gray-200"></div>
+            <p class="mt-3 text-indigo-600 font-medium">Memuat aplikasi...</p>
+        </div>
+    </div>
+    
+    <!-- Container Utama -->
+    <div id="appContainer" class="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-6 md:p-10 border-t-8 border-indigo-600 hidden">
+
+        <!-- Halaman Login -->
+        <div id="loginPage" class="hidden">
+            <h1 class="text-3xl font-extrabold text-indigo-700 text-center mb-2">👋 Selamat Datang</h1>
+            <p class="text-gray-500 text-center mb-8">Masukkan data Anda untuk memulai check-in.</p>
+            <form id="loginForm" class="space-y-6">
+                <div>
+                    <label for="studentName" class="block text-sm font-medium text-gray-700">Nama Lengkap</label>
+                    <input type="text" id="studentName" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Contoh: Budi Santoso">
+                </div>
+                <div>
+                    <label for="studentNis" class="block text-sm font-medium text-gray-700">NIS (Nomor Induk Siswa)</label>
+                    <input type="text" id="studentNis" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="Contoh: 12345">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition duration-300 shadow-md">
+                    Masuk dan Mulai Check-in
+                </button>
+                <p class="text-xs text-gray-500 text-center mt-4">ID Autentikasi: <span id="authIdDisplay" class="font-mono text-indigo-500">Memuat...</span></p>
+            </form>
+        </div>
+
+        <!-- Halaman Utama Aplikasi (Check-in + Riwayat) -->
+        <div id="mainApp" class="hidden">
+            
+            <!-- Header dengan Tombol Keluar -->
+            <header class="flex justify-between items-center mb-6 border-b pb-2">
+                <h1 class="text-2xl font-extrabold text-indigo-700">☀️ Check-in Emosional</h1>
+                <button id="logoutBtn" class="px-4 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-red-600 hover:text-white transition duration-300 shadow-sm">
+                    Keluar
+                </button>
+            </header>
+
+            <!-- Sapaan Lengkap: Nama dan NIS -->
+            <p class="text-gray-500 text-center mb-4">Hai, <span id="displayName" class="font-semibold text-indigo-600"></span>! Pilih perasaanmu saat ini.</p>
+
+            <!-- Check-in Form -->
+            <form id="checkInForm">
+                <!-- 1. Perasaan Saat Ini (Emoji/Warna) -->
+                <section class="mb-8">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">1. Bagaimana Perasaan Saya Saat Ini?</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <button type="button" class="emotion-btn bg-green-400 text-white" data-emotion="🟢 Siap & Tenang" data-color="green" onclick="selectEmotion(this)">
+                            <span class="text-4xl">😊</span><p class="mt-2 font-medium">Siap & Tenang</p><p class="text-xs opacity-80">Fokus, siap belajar.</p>
+                        </button>
+                        <button type="button" class="emotion-btn bg-yellow-400 text-gray-800" data-emotion="🟡 Biasa Saja" data-color="yellow" onclick="selectEmotion(this)">
+                            <span class="text-4xl">🙂</span><p class="mt-2 font-medium">Biasa Saja</p><p class="text-xs opacity-80">Agak berenergi.</p>
+                        </button>
+                        <button type="button" class="emotion-btn bg-orange-400 text-white" data-emotion="🟠 Lelah / Bingung" data-color="orange" onclick="selectEmotion(this)">
+                            <span class="text-4xl">😟</span><p class="mt-2 font-medium">Lelah / Bingung</p><p class="text-xs opacity-80">Sulit fokus.</p>
+                        </button>
+                        <button type="button" class="emotion-btn bg-red-500 text-white" data-emotion="🔴 Stres / Marah" data-color="red" onclick="selectEmotion(this)">
+                            <span class="text-4xl">😠</span><p class="mt-2 font-medium">Stres / Marah</p><p class="text-xs opacity-80">Perlu ruang.</p>
+                        </button>
+                    </div>
+                    <!-- Umpan balik Emosi yang dipilih (NEW) -->
+                    <div id="emotionDisplayFeedback" class="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700 font-medium hidden">
+                        <!-- Feedback akan di-inject di sini -->
+                    </div>
+                </section>
+
+                <!-- 2. Tingkat Energi -->
+                <section class="mb-8">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">2. Tingkat Energi Saya untuk Belajar (Skala 1-5)</h2>
+                    <div class="flex justify-between items-center text-center">
+                        <p class="text-sm text-gray-600">1: Sangat Rendah</p>
+                        <p class="text-sm text-gray-600">5: Sangat Tinggi</p>
+                    </div>
+                    <div class="flex justify-between items-center mt-3 p-3 bg-gray-100 rounded-lg shadow-inner">
+                        <label class="flex flex-col items-center cursor-pointer"><input type="radio" name="energyLevel" value="1" required><span class="mt-1 text-sm text-red-600 font-medium">1</span></label>
+                        <label class="flex flex-col items-center cursor-pointer"><input type="radio" name="energyLevel" value="2"><span class="mt-1 text-sm text-orange-600 font-medium">2</span></label>
+                        <label class="flex flex-col items-center cursor-pointer"><input type="radio" name="energyLevel" value="3"><span class="mt-1 text-sm text-yellow-600 font-medium">3</span></label>
+                        <label class="flex flex-col items-center cursor-pointer"><input type="radio" name="energyLevel" value="4"><span class="mt-1 text-sm text-lime-600 font-medium">4</span></label>
+                        <label class="flex flex-col items-center cursor-pointer"><input type="radio" name="energyLevel" value="5"><span class="mt-1 text-sm text-green-600 font-medium">5</span></label>
+                    </div>
+                    <!-- Umpan balik Energi yang dipilih (NEW) -->
+                    <div id="energyDisplayFeedback" class="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700 font-medium hidden">
+                        <!-- Feedback akan di-inject di sini -->
+                    </div>
+                </section>
+
+                <!-- 3. Apa yang Saya Butuhkan Hari Ini? -->
+                <section class="mb-8">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">3. Apa yang Saya Butuhkan Hari Ini?</h2>
+                    <div class="space-y-3">
+                        <label class="flex items-center text-gray-700"><input type="checkbox" name="needs" value="Ketenangan" class="h-5 w-5 text-indigo-600 rounded"><span class="ml-3">Ketenangan: Saya butuh waktu 3 menit *mindfulness* sebelum mulai.</span></label>
+                        <label class="flex items-center text-gray-700"><input type="checkbox" name="needs" value="Dukungan" class="h-5 w-5 text-indigo-600 rounded"><span class="ml-3">Dukungan: Saya butuh guru menyapa/berbicara setelah kelas.</span></label>
+                        <label class="flex items-center text-gray-700"><input type="checkbox" name="needs" value="Ruang" class="h-5 w-5 text-indigo-600 rounded"><span class="ml-3">Ruang: Saya hanya butuh fokus dan tidak ingin diganggu hari ini.</span></label>
+                        <div class="pt-4">
+                            <label for="otherNeed" class="block text-gray-700 font-medium mb-2">Lainnya (Tuliskan jika ada kebutuhan spesifik):</label>
+                            <input type="text" id="otherNeed" name="otherNeed" placeholder="Contoh: Saya butuh minum air putih dulu" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Submission Button -->
+                <button type="submit" id="submitBtn" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition duration-300 shadow-md flex items-center justify-center">
+                    <span id="submitText">Kirim Check-in Saya</span>
+                    <div id="submitSpinner" class="spinner hidden"></div>
+                </button>
+            </form>
+
+            <!-- Success/Error Messages -->
+            <div id="messageContainer" class="mt-4"></div>
+
+            <!-- RIWAYAT EMOSIONAL SISWA -->
+            <section class="mt-8 border-t pt-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                    <svg class="w-6 h-6 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Riwayat 5 Check-in Terakhir
+                </h2>
+                <div id="historyContainer" class="space-y-3">
+                    <p id="historyLoading" class="text-gray-500">Memuat riwayat...</p>
+                    <!-- Riwayat akan di-inject di sini -->
+                </div>
+            </section>
+            
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, orderBy, limit, onSnapshot, setDoc, doc, getDoc, setLogLevel, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Variabel Global Canvas ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- State Aplikasi ---
+        let app, db, auth, userId = null;
+        let studentData = { name: null, nis: null };
+        let selectedEmotion = null;
+
+        // --- Elemen UI ---
+        const loginPage = document.getElementById('loginPage');
+        const mainApp = document.getElementById('mainApp');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const appContainer = document.getElementById('appContainer');
+        const displayName = document.getElementById('displayName'); // Digunakan untuk sapaan
+        const emotionDisplayFeedback = document.getElementById('emotionDisplayFeedback'); // Elemen baru
+        const energyDisplayFeedback = document.getElementById('energyDisplayFeedback'); // Elemen baru
+        const historyContainer = document.getElementById('historyContainer');
+        const authIdDisplay = document.getElementById('authIdDisplay');
+        const messageContainer = document.getElementById('messageContainer');
+        const submitBtn = document.getElementById('submitBtn');
+        const submitText = document.getElementById('submitText');
+        const submitSpinner = document.getElementById('submitSpinner');
+        const logoutBtn = document.getElementById('logoutBtn');
+        
+        // --- Fungsi Utility ---
+
+        // Menampilkan pesan notifikasi
+        function showMessage(type, content) {
+            messageContainer.innerHTML = `
+                <div class="p-4 rounded-lg border-l-4 ${type === 'success' ? 'bg-green-100 text-green-700 border-green-500' : 'bg-red-100 text-red-700 border-red-500'}">
+                    <p class="font-semibold">${type === 'success' ? '✅ Berhasil' : '⚠️ Gagal'}</p>
+                    <p class="text-sm mt-1">${content}</p>
+                </div>
+            `;
+            setTimeout(() => { messageContainer.innerHTML = ''; }, 5000);
+        }
+
+        // --- Inisialisasi Firebase & Otentikasi ---
+
+        async function initFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length === 0) {
+                    console.error("Firebase config tidak tersedia.");
+                    loadingOverlay.classList.add('hidden');
+                    appContainer.classList.remove('hidden');
+                    loginPage.classList.remove('hidden');
+                    showMessage('error', 'Konfigurasi Firebase hilang. Fitur riwayat tidak akan berfungsi.');
+                    return;
+                }
+
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('Debug'); // Untuk debugging
+
+                await new Promise((resolve) => {
+                    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            authIdDisplay.textContent = userId;
+                            console.log("Authenticated User ID:", userId);
+                            // Cek apakah data siswa sudah tersimpan
+                            await loadStudentProfile();
+                            resolve();
+                        } else {
+                            // Coba sign in dengan token kustom atau anonim
+                            try {
+                                if (initialAuthToken) {
+                                    await signInWithCustomToken(auth, initialAuthToken);
+                                } else {
+                                    await signInAnonymously(auth);
+                                }
+                            } catch (error) {
+                                console.error("Otentikasi Gagal:", error);
+                                await signInAnonymously(auth);
+                            }
+                        }
+                        unsubscribe();
+                    });
+                });
+
+            } catch (error) {
+                console.error("Kesalahan saat inisialisasi Firebase:", error);
+            } finally {
+                loadingOverlay.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                if (studentData.nis && studentData.name) {
+                    showMainApp();
+                } else {
+                    loginPage.classList.remove('hidden');
+                }
+            }
+        }
+
+        // Memuat data siswa (NIS & Nama) yang tersimpan
+        async function loadStudentProfile() {
+            if (!userId) return;
+            try {
+                const docRef = doc(db, "artifacts", appId, "users", userId, "profile", "data");
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    studentData = docSnap.data();
+                    console.log("Profil Siswa dimuat:", studentData);
+                }
+            } catch (e) {
+                console.error("Gagal memuat profil siswa:", e);
+            }
+        }
+
+        // Menyimpan data siswa setelah login
+        async function saveStudentProfile(name, nis) {
+            if (!userId) return;
+            studentData = { name: name, nis: nis };
+            try {
+                const docRef = doc(db, "artifacts", appId, "users", userId, "profile", "data");
+                await setDoc(docRef, studentData);
+            } catch (e) {
+                console.error("Gagal menyimpan profil siswa:", e);
+            }
+        }
+
+        // Menampilkan halaman utama, sapaan lengkap, dan memulai listener
+        function showMainApp() {
+            loginPage.classList.add('hidden');
+            mainApp.classList.remove('hidden');
+            // Sapaan lengkap: Nama dan NIS
+            displayName.textContent = `${studentData.name} (NIS: ${studentData.nis})`;
+            loadHistory();
+            setupEnergyListener(); // Memasang listener untuk umpan balik energi
+        }
+
+        // --- Logika Logout ---
+        function logoutUser() {
+            // 1. Reset client-side state
+            studentData = { name: null, nis: null };
+            selectedEmotion = null;
+
+            // 2. Clear all specific ring classes from buttons and generic selected class
+            document.querySelectorAll('.emotion-btn').forEach(btn => {
+                btn.classList.remove('selected', 'ring-green-600', 'ring-yellow-600', 'ring-orange-600', 'ring-red-600');
+            });
+            
+            // 3. Hide Main App, Show Login, and reset form
+            mainApp.classList.add('hidden');
+            loginPage.classList.remove('hidden');
+            document.getElementById('checkInForm').reset();
+            
+            // Sembunyikan feedback saat logout
+            emotionDisplayFeedback.classList.add('hidden');
+            energyDisplayFeedback.classList.add('hidden');
+
+            showMessage('success', 'Anda berhasil keluar. Silakan masukkan data untuk check-in kembali.');
+        }
+
+        // Attach logout listener
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', logoutUser);
+        }
+
+        // --- Logika Check-in Emosional ---
+
+        // Daftar kelas ring yang mungkin
+        const ringClasses = ['ring-green-600', 'ring-yellow-600', 'ring-orange-600', 'ring-red-600'];
+
+        window.selectEmotion = function(button) {
+            // 1. Hapus status 'selected' dan ring dari semua tombol
+            document.querySelectorAll('.emotion-btn').forEach(btn => {
+                btn.classList.remove('selected', ...ringClasses);
+            });
+
+            // 2. Tambahkan status 'selected' dan ring yang sesuai
+            const color = button.getAttribute('data-color');
+            let ringClass;
+            
+            // Menentukan kelas ring yang sesuai dengan warna tombol yang sudah cerah
+            if (color === 'green') ringClass = 'ring-green-600';
+            else if (color === 'yellow') ringClass = 'ring-yellow-600';
+            else if (color === 'orange') ringClass = 'ring-orange-600';
+            else if (color === 'red') ringClass = 'ring-red-600';
+
+            button.classList.add('selected', ringClass);
+            
+            selectedEmotion = {
+                emotion: button.getAttribute('data-emotion'),
+                color: color
+            };
+
+            // --- Update Umpan Balik Emosi ---
+            emotionDisplayFeedback.classList.remove('hidden');
+            emotionDisplayFeedback.innerHTML = `Anda memilih perasaan: **${selectedEmotion.emotion}**.`;
+        }
+        
+        // --- Listener untuk Tingkat Energi (Baru) ---
+        function setupEnergyListener() {
+            const radioButtons = document.querySelectorAll('input[name="energyLevel"]');
+            radioButtons.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    const selectedValue = this.value;
+                    energyDisplayFeedback.classList.remove('hidden');
+                    energyDisplayFeedback.innerHTML = `Tingkat energi yang dipilih: **${selectedValue} / 5**.`;
+                });
+            });
+        }
+
+        document.getElementById('checkInForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            submitBtn.disabled = true;
+            submitText.classList.add('hidden');
+            submitSpinner.classList.remove('hidden');
+
+            const energyLevel = document.querySelector('input[name="energyLevel"]:checked');
+            const otherNeed = document.getElementById('otherNeed').value.trim();
+            
+            if (!selectedEmotion || !energyLevel || !userId) {
+                showMessage('error', 'Anda harus memilih kondisi emosi dan tingkat energi.');
+                submitBtn.disabled = false;
+                submitText.classList.remove('hidden');
+                submitSpinner.classList.add('hidden');
+                return;
+            }
+            
+            const needsCheckboxes = document.querySelectorAll('input[name="needs"]:checked');
+            const selectedNeeds = Array.from(needsCheckboxes).map(cb => cb.value);
+
+            if (otherNeed) {
+                selectedNeeds.push(`Lainnya: ${otherNeed}`);
+            }
+
+            const checkinData = {
+                name: studentData.name,
+                nis: studentData.nis,
+                emosi: selectedEmotion.emotion,
+                tingkatEnergi: energyLevel.value,
+                kebutuhan: selectedNeeds.length > 0 ? selectedNeeds.join('; ') : 'Tidak ada kebutuhan spesifik',
+                timestamp: serverTimestamp()
+            };
+
+            try {
+                const checkinsColRef = collection(db, "artifacts", appId, "users", userId, "checkins");
+                await addDoc(checkinsColRef, checkinData);
+                
+                showMessage('success', `Check-in berhasil disimpan! Emosi: ${checkinData.emosi}, Energi: ${checkinData.tingkatEnergi}/5.`);
+                
+                // Bersihkan formulir dan status pilihan
+                e.target.reset();
+                selectedEmotion = null;
+                document.querySelectorAll('.emotion-btn').forEach(btn => {
+                    btn.classList.remove('selected', ...ringClasses);
+                });
+                
+                // Sembunyikan kembali feedback setelah kirim
+                emotionDisplayFeedback.classList.add('hidden');
+                energyDisplayFeedback.classList.add('hidden');
+
+            } catch (e) {
+                console.error("Gagal menyimpan check-in:", e);
+                showMessage('error', 'Gagal menyimpan data ke database. Coba lagi.');
+            } finally {
+                submitBtn.disabled = false;
+                submitText.classList.remove('hidden');
+                submitSpinner.classList.add('hidden');
+            }
+        });
+
+        // --- Logika Riwayat Emosional (onSnapshot) ---
+
+        function loadHistory() {
+            if (!userId) {
+                historyContainer.innerHTML = '<p class="text-gray-500 italic">Autentikasi belum siap atau terjadi kesalahan.</p>';
+                return;
+            }
+
+            const checkinsColRef = collection(db, "artifacts", appId, "users", userId, "checkins");
+            const q = query(checkinsColRef, orderBy("timestamp", "desc"), limit(5));
+
+            onSnapshot(q, (snapshot) => {
+                const historyList = [];
+                snapshot.forEach(doc => {
+                    historyList.push(doc.data());
+                });
+
+                renderHistory(historyList);
+            }, (error) => {
+                console.error("Gagal memuat riwayat:", error);
+                historyContainer.innerHTML = '<p class="text-red-500">Gagal memuat riwayat emosional.</p>';
+            });
+        }
+
+        function renderHistory(history) {
+            if (history.length === 0) {
+                historyContainer.innerHTML = '<p class="text-gray-500 italic">Belum ada riwayat check-in yang tercatat.</p>';
+                return;
+            }
+
+            historyContainer.innerHTML = history.map(item => {
+                const time = item.timestamp ? new Date(item.timestamp.seconds * 1000).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : 'Baru Saja';
+                const colorMap = {
+                    '🟢': 'border-green-400 bg-green-50',
+                    '🟡': 'border-yellow-400 bg-yellow-50',
+                    '🟠': 'border-orange-400 bg-orange-50',
+                    '🔴': 'border-red-400 bg-red-50',
+                };
+                const emotionKey = item.emosi.substring(0, 2);
+                const colorClass = colorMap[emotionKey] || 'border-gray-300 bg-gray-100';
+
+                return `
+                    <div class="p-4 rounded-lg shadow-sm border-l-4 ${colorClass}">
+                        <p class="text-xs text-gray-500">${time}</p>
+                        <p class="text-lg font-bold mt-1">${item.emosi} (Energi: ${item.tingkatEnergi}/5)</p>
+                        <p class="text-sm text-gray-700">Kebutuhan: ${item.kebutuhan}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- Logika Login ---
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const name = document.getElementById('studentName').value.trim();
+            const nis = document.getElementById('studentNis').value.trim();
+
+            if (name && nis) {
+                await saveStudentProfile(name, nis);
+                showMainApp();
+            } else {
+                showMessage('error', 'Nama dan NIS harus diisi.');
+            }
+        });
+
+
+        // --- Startup ---
+        window.onload = initFirebase;
+    </script>
+</body>
+</html>
